@@ -139,7 +139,8 @@ class ReservationActionsController extends Controller
             [
                 'reservation_id' => $res->id,
                 'status'         => 'ocupada',
-                'color_code_id'  => DB::table('color_codes')->where('color_name','azul_cielo')->value('id'),
+                // Ahora
+                'color_code_id' => DB::table('color_codes')->where('color_name', 'Rojo')->value('id'),
                 'notes'          => 'Check-in por QR',
                 'created_at'     => now(),
             ]
@@ -219,7 +220,8 @@ public function checkout($id, \Illuminate\Http\Request $r)
             [
                 'reservation_id' => $res->id,
                 'status'         => 'disponible',
-                'color_code_id'  => \Illuminate\Support\Facades\DB::table('color_codes')->where('color_name','gris')->value('id'),
+                // Ahora
+                'color_code_id' => DB::table('color_codes')->where('color_name', 'Rojo')->value('id'),
                 'notes'          => 'Check-out del huésped',
                 'created_at'     => now(),
             ]

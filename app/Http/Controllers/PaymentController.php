@@ -86,7 +86,8 @@ class PaymentController extends Controller
             ]);
 
             // 6. Actualizar la reserva a "confirmada"
-            $colorId = DB::table('color_codes')->where('color_name', 'azul_cielo')->value('id');
+            // Ahora
+            $colorId = DB::table('color_codes')->where('color_name', 'Amarillo')->value('id');
             DB::table('reservations')->where('id', $res->id)->update([
                 'status' => 'confirmada',
                 'color_code_id' => $colorId ?: null,
