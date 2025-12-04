@@ -103,3 +103,22 @@ Route::middleware('auth:sanctum')->group(function () {
         ], 200);
     });
 });
+
+
+use Illuminate\Support\Facades\DB;
+
+Route::get('/debug-db', function () {
+    try {
+        $dbName = DB::connection()->getDatabaseName();
+        $tableCount = DB::table('cart_items')->count();
+        
+        return response()->json([
+            'status' => 'Conectado',
+            'database_name' => $dbName,
+            'cart_items_count' => $tableCount,
+            'last_item' => DB::table('cart_items')->latest()->first()
+        ]);
+    } catch (\Exception $e) {
+        return response()->json(['error' => $e->getMessage()]);
+    }
+});
