@@ -14,6 +14,7 @@ use App\Http\Controllers\RoomsPublicController;
 use App\Http\Controllers\TestimonialsController;
 use App\Http\Controllers\ForgotPasswordController;
 use App\Http\Controllers\CartController;
+use App\Http\Controllers\NewPasswordController;
 /*
 |--------------------------------------------------------------------------
 | 1. Rutas Públicas (No requieren autenticación)
@@ -68,6 +69,10 @@ Route::middleware('auth:sanctum')->group(function () {
     // Solicitar enlace para resetear contraseña
     Route::post('/forgot-password', [ForgotPasswordController::class, 'sendResetLink']);
 
+    // Rutas Públicas (fuera del middleware auth:sanctum)
+    Route::post('/forgot-password', [NewPasswordController::class, 'forgotPassword']);
+    Route::post('/reset-password', [NewPasswordController::class, 'reset']);
+
     // Resetear la contraseña con el token
     Route::post('/reset-password', [ForgotPasswordController::class, 'resetPassword']);
 
@@ -83,9 +88,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Acciones y Documentos de Reserva
     Route::post('/reservations/{id}/send-confirmation', [ReservationActionsController::class, 'sendConfirmation']);
+    Route::post('/reservations/{id}/send-confirmation', [ReservationDocsController::class, 'sendConfirmation']);
     Route::get('/reservations/{id}/voucher.pdf', [ReservationDocsController::class, 'voucher']);
     Route::get('/reservations/{id}/calendar.ics', [ReservationDocsController::class, 'calendar']);
-
+    
     // Check-in (para personal del hotel, pero requiere token)
     Route::post('/checkin/scan', [ReservationActionsController::class, 'scanQr']);
     

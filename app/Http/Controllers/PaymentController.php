@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use App\Http\Controllers\ReservationActionsController;
+use Illuminate\Support\Facades\Mail; // <--- Importamos Mail
+use App\Mail\ReservationConfirmation; // <--- Importamos tu correo nuevo
+use App\Models\Reservation;           // <--- Importamos el Modelo
 use Stripe\Stripe;
 use Stripe\PaymentIntent;
 use Stripe\Exception\CardException;
@@ -14,13 +16,13 @@ class PaymentController extends Controller
 {
     public function payReservation($id, Request $r)
     {
-        // 1. Validación de entrada (lo que enviará React)
+        // 1. Validación de entrada
         $fields = $r->validate([
             'payment_method_id' => 'required|string',
             'idempotency_key' => 'required|string|max:64',
         ]);
 
-        // 2. Traer reserva y validar propietario y estado (como ya lo tenías)
+        // 2. Traer reserva básica
         $res = DB::table('reservations')->where('id', $id)->first();
 
         if (!$res) {
@@ -33,7 +35,7 @@ class PaymentController extends Controller
             return ApiResponse::error('La reserva no está en estado tentativa', ['code' => 'INVALID_STATUS'], 409);
         }
 
-        // 3. Calcular monto final (habitación + extras)
+        // 3. Calcular monto final
         $roomTotal = (float) $res->total_price;
         $extrasTotal = (float) DB::table('reservation_extra')
             ->where('reservation_id', $res->id)
@@ -46,9 +48,8 @@ class PaymentController extends Controller
            
             // 4. Crear el intento de pago en Stripe
             $paymentIntent = PaymentIntent::create(
-                // Parámetros del pago (primer array)
                 [
-                    'amount' => $amount * 100, // Stripe usa centavos
+                    'amount' => $amount * 100, // Centavos
                     'currency' => 'mxn',
                     'payment_method' => $fields['payment_method_id'],
                     'confirm' => true,
@@ -61,13 +62,12 @@ class PaymentController extends Controller
                         'user_id' => $r->user()->id,
                     ]
                 ],
-                // Opción correcta: La llave de idempotencia se pasa aquí, como segundo parámetro
                 ['idempotency_key' => $fields['idempotency_key']]
             );
 
             // --- FIN LÓGICA DE STRIPE ---
 
-            // Si el pago es exitoso, procedemos a guardar todo en la base de datos
+            // Si el pago es exitoso, procedemos
             DB::beginTransaction();
 
             // 5. Insertar el registro del pago
@@ -86,22 +86,32 @@ class PaymentController extends Controller
             ]);
 
             // 6. Actualizar la reserva a "confirmada"
-            // Ahora
             $colorId = DB::table('color_codes')->where('color_name', 'Amarillo')->value('id');
+            
             DB::table('reservations')->where('id', $res->id)->update([
                 'status' => 'confirmada',
                 'color_code_id' => $colorId ?: null,
                 'updated_at' => now(),
             ]);
+            
+            // Opcional: También bloquear la habitación en 'rooms' si tu lógica lo requiere
+            // DB::table('rooms')->where('id', $res->room_id)->update(['status' => 'ocupada']);
 
             DB::commit();
 
-            // 7. Enviar confirmación + QR automáticamente
+            // 7. ENVIAR CONFIRMACIÓN + QR AUTOMÁTICAMENTE 📧
             $emailSent = false;
             try {
-                $emailResponse = app(ReservationActionsController::class)->sendConfirmation($res->id, $r);
-                $emailSent = method_exists($emailResponse, 'getStatusCode') ? ($emailResponse->getStatusCode() === 200) : false;
+                // Truco: Recargamos la reserva como Modelo Eloquent para tener las relaciones (user, room)
+                $reservationModel = Reservation::with(['user', 'room.type'])->find($res->id);
+                
+                if ($reservationModel && $reservationModel->user) {
+                    Mail::to($reservationModel->user->email)->send(new ReservationConfirmation($reservationModel));
+                    $emailSent = true;
+                }
             } catch (\Throwable $e) {
+                // Si falla el correo, lo registramos en el log pero NO fallamos el pago
+                \Illuminate\Support\Facades\Log::error("Error enviando correo de confirmación: " . $e->getMessage());
                 $emailSent = false;
             }
 
@@ -119,10 +129,10 @@ class PaymentController extends Controller
             ], 200);
 
         } catch (CardException $e) {
-            // El pago fue rechazado por el banco
+            // Pago rechazado por el banco
             return ApiResponse::error('Pago rechazado por el banco', ['code' => 'CARD_DECLINED', 'details' => $e->getError()->message], 402);
         } catch (\Throwable $e) {
-            // Cualquier otro error (Stripe, base de datos, etc.)
+            // Cualquier otro error
             DB::rollBack();
             return ApiResponse::error('Error interno al aplicar el pago', ['exception' => class_basename($e), 'message' => $e->getMessage()], 500);
         }

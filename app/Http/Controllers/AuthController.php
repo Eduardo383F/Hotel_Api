@@ -6,6 +6,8 @@ use App\Models\User;
 use App\Support\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail; // <--- IMPORTANTE
+use App\Mail\WelcomeEmail;           // <--- IMPORTANTE
 
 class AuthController extends Controller
 {
@@ -13,9 +15,9 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         $fields = $request->validate([
-            'name'                  => 'required|string|max:255',
-            'email'                 => 'required|string|email|unique:users,email',
-            'password'              => 'required|string|confirmed|min:6',
+            'name'              => 'required|string|max:255',
+            'email'    => 'required|string|email:rfc,dns|unique:users,email', 
+            'password'          => 'required|string|confirmed|min:6',
         ]);
 
         $user = User::create([
@@ -25,13 +27,24 @@ class AuthController extends Controller
             'role'      => 'cliente', // explícito, aunque tu ENUM tenga default
         ]);
 
+        // --- ENVIAR CORREO DE BIENVENIDA ---
+        try {
+            // Enviamos el correo a la dirección registrada
+            Mail::to($user->email)->send(new WelcomeEmail($user));
+        } catch (\Exception $e) {
+            // Si falla el correo (por ejemplo, sin internet o malas credenciales SMTP),
+            // lo registramos en el log pero NO detenemos el registro del usuario.
+            \Illuminate\Support\Facades\Log::error('Error enviando correo de bienvenida: ' . $e->getMessage());
+        }
+        // -----------------------------------
+
         $token = $user->createToken('api_token')->plainTextToken;
 
-        return ApiResponse::success('Usuario registrado correctamente.', [
+        return ApiResponse::success('Usuario registrado correctamente y correo enviado.', [
             'id'           => $user->id,
             'name'         => $user->name,
             'email'        => $user->email,
-            'role'         => $user->role,   // <-- ENUM, no Spatie
+            'role'         => $user->role, 
             'access_token' => $token,
         ], 201);
     }
@@ -56,7 +69,7 @@ class AuthController extends Controller
             'id'           => $user->id,
             'name'         => $user->name,
             'email'        => $user->email,
-            'role'         => $user->role,   // <-- aquí estaba el detalle
+            'role'         => $user->role,
             'access_token' => $token,
         ], 200);
     }

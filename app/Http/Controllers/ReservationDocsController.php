@@ -6,7 +6,9 @@ use App\Support\ApiResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
-
+use Illuminate\Support\Facades\Mail;
+use App\Mail\ReservationConfirmation;
+use App\Models\Reservation;
 class ReservationDocsController extends Controller
 {
     /**
@@ -131,5 +133,32 @@ END:VCALENDAR";
             'Content-Type' => 'text/calendar; charset=utf-8',
             'Content-Disposition' => "attachment; filename=\"reserva-{$id}.ics\"",
         ]);
+    }
+
+    public function sendConfirmation($id, Request $request)
+    {
+        // 1. Buscamos la reserva con sus relaciones (Usuario y Habitación)
+        // Usamos Eloquent (Reservation::) en lugar de DB::table para que funcione el Mailable fácil
+        $reservation = Reservation::with(['user', 'room.type'])->find($id);
+
+        if (!$reservation) {
+            return ApiResponse::error('Reserva no encontrada', [], 404);
+        }
+
+        // 2. Seguridad: Solo el dueño o un admin puede pedir el correo
+        // (Si quieres permitir que un admin reenvíe correos a clientes, ajusta esta línea)
+        if ($request->user()->id !== $reservation->user_id && $request->user()->role !== 'admin') {
+            return ApiResponse::error('No autorizado', [], 403);
+        }
+
+        try {
+            // 3. Enviamos el correo
+            Mail::to($reservation->user->email)->send(new ReservationConfirmation($reservation));
+            
+            return ApiResponse::success('Correo de confirmación enviado a ' . $reservation->user->email);
+            
+        } catch (\Exception $e) {
+            return ApiResponse::error('Error al enviar correo: ' . $e->getMessage(), [], 500);
+        }
     }
 }
