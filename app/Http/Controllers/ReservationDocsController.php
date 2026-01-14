@@ -9,6 +9,8 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\Mail;
 use App\Mail\ReservationConfirmation;
 use App\Models\Reservation;
+use Barryvdh\DomPDF\Facade\Pdf; // <--- Importante para el PDF
+
 class ReservationDocsController extends Controller
 {
     /**
@@ -18,7 +20,6 @@ class ReservationDocsController extends Controller
     public function voucher($id, Request $request)
     {
         // 1. Buscar la reserva con sus relaciones
-        // NOTA: Eliminamos 'u.phone_number' porque no existe en tu tabla 'users'
         $res = DB::table('reservations as r')
             ->join('users as u', 'r.user_id', '=', 'u.id')
             ->join('rooms as rm', 'r.room_id', '=', 'rm.id')
@@ -135,18 +136,20 @@ END:VCALENDAR";
         ]);
     }
 
+    /**
+     * POST /api/reservations/{id}/send-confirmation
+     * Reenvía el correo de confirmación manualmente.
+     */
     public function sendConfirmation($id, Request $request)
     {
-        // 1. Buscamos la reserva con sus relaciones (Usuario y Habitación)
-        // Usamos Eloquent (Reservation::) en lugar de DB::table para que funcione el Mailable fácil
+        // 1. Buscamos la reserva con sus relaciones
         $reservation = Reservation::with(['user', 'room.type'])->find($id);
 
         if (!$reservation) {
             return ApiResponse::error('Reserva no encontrada', [], 404);
         }
 
-        // 2. Seguridad: Solo el dueño o un admin puede pedir el correo
-        // (Si quieres permitir que un admin reenvíe correos a clientes, ajusta esta línea)
+        // 2. Seguridad
         if ($request->user()->id !== $reservation->user_id && $request->user()->role !== 'admin') {
             return ApiResponse::error('No autorizado', [], 403);
         }
@@ -160,5 +163,38 @@ END:VCALENDAR";
         } catch (\Exception $e) {
             return ApiResponse::error('Error al enviar correo: ' . $e->getMessage(), [], 500);
         }
+    }
+
+    /**
+     * NUEVO: GET /api/reservations/{id}/download-pdf
+     * Genera el archivo PDF descargable de forma segura (Ruta Firmada).
+     */
+    public function downloadPdf($id, Request $request)
+    {
+        // 1. Verificar firma (Aunque el middleware lo hace, esto es doble seguridad)
+        if (! $request->hasValidSignature()) {
+            abort(403, 'Este enlace ha expirado o no es válido.');
+        }
+
+        // 2. Buscamos la reserva con sus relaciones
+        $reservation = Reservation::with(['user', 'room.type'])->find($id);
+
+        if (!$reservation) {
+            abort(404, 'Reserva no encontrada');
+        }
+
+        // 3. Generamos el PDF usando la misma vista bonita del correo
+        // (Asegúrate de tener barryvdh/laravel-dompdf instalado)
+        $pdf = Pdf::loadView('emails.reservation_confirmation', [
+            'reservation' => $reservation,
+            // Truco para que las imágenes funcionen en el PDF
+            'message' => new \Illuminate\Mail\Message(new \Symfony\Component\Mime\Email()) 
+        ]);
+        
+        // Ajuste para imágenes externas o locales en PDF
+        $pdf->setOptions(['isRemoteEnabled' => true]);
+
+        // 4. Descargar
+        return $pdf->download("Reserva-{$reservation->id}.pdf");
     }
 }

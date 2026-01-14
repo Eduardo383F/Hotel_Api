@@ -19,6 +19,7 @@
                     <!-- HEADER -->
                     <tr>
                         <td style="background: linear-gradient(135deg, #2196F3 0%, #0277BD 100%); padding: 30px; text-align: center;">
+                            <!-- Logo incrustado -->
                             <img src="{{ $message->embed(public_path('logo.png')) }}" alt="Logo" width="100" style="display:block; margin:0 auto;">
                             <h2 style="color: white; margin: 15px 0 0;">¡Tu Reserva está Confirmada!</h2>
                         </td>
@@ -28,7 +29,7 @@
                     <tr>
                         <td style="padding: 30px;">
                             <p style="color: #555; font-size: 16px;">Hola <strong>{{ $reservation->user->name }}</strong>,</p>
-                            <p style="color: #666; line-height: 1.6;">Gracias por elegir <strong>Hotel Dios Padre</strong>. Tu pago ha sido procesado y tu habitación te espera.</p>
+                            <p style="color: #666; line-height: 1.6;">Gracias por elegir <strong>Hotel Dios Padre</strong>. Tu pago ha sido procesado exitosamente y tu habitación te espera.</p>
 
                             <!-- DETALLES DE RESERVA -->
                             <table class="detail-table" width="100%" style="background-color: #f9f9f9; border-radius: 6px; margin: 20px 0; border: 1px solid #eee;">
@@ -39,7 +40,6 @@
                                 <tr>
                                     <td style="color:#888;">Habitación:</td>
                                     <td style="font-weight:bold; color:#333;">
-                                        <!-- Accedemos a la relación room -> roomType -->
                                         {{ $reservation->room->number }} - {{ $reservation->room->type->name ?? 'Estándar' }}
                                     </td>
                                 </tr>
@@ -61,14 +61,25 @@
                                 </tr>
                             </table>
 
-                            <!-- BOTÓN AL VOUCHER (QR) -->
+                            <!-- BOTONES DE ACCIÓN -->
                             <div style="text-align: center; margin: 30px 0;">
+                                
+                                <!-- 1. BOTÓN VER EN WEB (React) -->
                                 <a href="{{ config('app.frontend_url', 'http://localhost:3000') }}/voucher/{{ $reservation->id }}" 
-                                   style="background-color: #0277BD; color: white; padding: 14px 28px; text-decoration: none; border-radius: 5px; font-weight: bold;">
-                                    Ver mi Código QR de Acceso
+                                   style="background-color: #0277BD; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 14px; margin: 5px; display: inline-block;">
+                                    Ver Código QR
                                 </a>
-                                <p style="font-size: 0px; color: #ffffff; margin-top: 10px;">-</p>
-                                <p style="font-size: 12px; color: #999; margin-top: 10px;">Necesitarás este código para ingresar a tu habitación.</p>
+
+                                <!-- 2. BOTÓN DESCARGAR PDF (Laravel Signed Route) -->
+                                <!-- Usamos la ruta firmada para permitir descarga segura desde el correo -->
+                                <a href="{{ \Illuminate\Support\Facades\URL::signedRoute('reservations.pdf', ['id' => $reservation->id]) }}" 
+                                   style="background-color: #f57c00; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 14px; margin: 5px; display: inline-block;">
+                                    Descargar Comprobante PDF
+                                </a>
+
+                                <p style="font-size: 12px; color: #999; margin-top: 15px;">
+                                    Necesitarás uno de estos comprobantes para ingresar a tu habitación.
+                                </p>
                             </div>
 
                         </td>

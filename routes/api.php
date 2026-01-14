@@ -2,6 +2,7 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\DB;
 use App\Support\ApiResponse;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\AvailabilityController;
@@ -15,18 +16,23 @@ use App\Http\Controllers\TestimonialsController;
 use App\Http\Controllers\ForgotPasswordController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\NewPasswordController;
+
 /*
 |--------------------------------------------------------------------------
 | 1. Rutas Públicas (No requieren autenticación)
 |--------------------------------------------------------------------------
 |
-| Endpoints para registro, login y contenido general del sitio web.
+| Endpoints para registro, login, contenido web y acciones seguras.
 |
 */
 
 // Autenticación
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login',    [AuthController::class, 'login']);
+
+// Recuperación de Contraseña (Públicas)
+Route::post('/forgot-password', [NewPasswordController::class, 'forgotPassword']);
+Route::post('/reset-password', [NewPasswordController::class, 'reset']);
 
 // Contenido Web y Catálogo
 Route::get('/availability', [AvailabilityController::class, 'index']);
@@ -43,81 +49,11 @@ Route::get('/testimonials', [ContentPublicController::class, 'testimonials']);
 // Endpoint de prueba
 Route::get('/ping', fn() => response()->json(['message' => 'API funcionando']));
 
-Route::middleware('auth:sanctum')->group(function () {
-    
-    // ... tus otras rutas ...
-
-    // CARRITO DE COMPRAS
-    Route::get('/cart', [CartController::class, 'index']);       // Ver carrito
-    Route::post('/cart', [CartController::class, 'store']);      // Agregar habitación
-    Route::delete('/cart/{id}', [CartController::class, 'destroy']); // Eliminar uno
-    Route::delete('/cart', [CartController::class, 'clear']);    // Vaciar todo
-});
-
-/*
-|--------------------------------------------------------------------------
-| 2. Rutas Protegidas (Requieren autenticación con Sanctum)
-|--------------------------------------------------------------------------
-|
-| Endpoints para clientes que ya han iniciado sesión.
-|
-*/
-
-Route::middleware('auth:sanctum')->group(function () {
-
-
-    // Solicitar enlace para resetear contraseña
-    Route::post('/forgot-password', [ForgotPasswordController::class, 'sendResetLink']);
-
-    // Rutas Públicas (fuera del middleware auth:sanctum)
-    Route::post('/forgot-password', [NewPasswordController::class, 'forgotPassword']);
-    Route::post('/reset-password', [NewPasswordController::class, 'reset']);
-
-    // Resetear la contraseña con el token
-    Route::post('/reset-password', [ForgotPasswordController::class, 'resetPassword']);
-
-    // Autenticación
-    Route::post('/logout', [AuthController::class, 'logout']);
-
-    // Flujo de Reservas
-    Route::post('/reservations', [ReservationController::class, 'store']);
-    Route::get('/reservations', [ReservationController::class, 'index']);
-    Route::get('/reservations/{id}', [ReservationController::class, 'show']);
-    Route::post('/reservations/{id}/pay', [PaymentController::class, 'payReservation']);
-    Route::post('/reservations/{id}/checkout', [ReservationActionsController::class, 'checkout']);
-
-    // Acciones y Documentos de Reserva
-    Route::post('/reservations/{id}/send-confirmation', [ReservationActionsController::class, 'sendConfirmation']);
-    Route::post('/reservations/{id}/send-confirmation', [ReservationDocsController::class, 'sendConfirmation']);
-    Route::get('/reservations/{id}/voucher.pdf', [ReservationDocsController::class, 'voucher']);
-    Route::get('/reservations/{id}/calendar.ics', [ReservationDocsController::class, 'calendar']);
-    
-    // Check-in (para personal del hotel, pero requiere token)
-    Route::post('/checkin/scan', [ReservationActionsController::class, 'scanQr']);
-    
-    // Testimonios (el cliente debe estar logueado para enviar uno)
-    Route::post('/testimonials', [TestimonialsController::class, 'store']);
-
-    // Zona de Cliente (Ejemplo)
-    Route::get('/zona-cliente', function (Request $request) {
-        if ($request->user()->role !== 'cliente') {
-            return ApiResponse::error('Acceso prohibido', [], 403);
-        }
-        return ApiResponse::success('Zona solo para clientes', [
-            'id'   => $request->user()->id,
-            'name' => $request->user()->name,
-        ], 200);
-    });
-});
-
-
-use Illuminate\Support\Facades\DB;
-
+// Debug de Base de Datos (Opcional: Quitar en producción)
 Route::get('/debug-db', function () {
     try {
         $dbName = DB::connection()->getDatabaseName();
         $tableCount = DB::table('cart_items')->count();
-        
         return response()->json([
             'status' => 'Conectado',
             'database_name' => $dbName,
@@ -127,4 +63,67 @@ Route::get('/debug-db', function () {
     } catch (\Exception $e) {
         return response()->json(['error' => $e->getMessage()]);
     }
+});
+
+/*
+|--------------------------------------------------------------------------
+| 2. Rutas Especiales (Públicas pero Firmadas)
+|--------------------------------------------------------------------------
+|
+| Permiten descargar archivos desde el correo sin iniciar sesión.
+|
+*/
+Route::get('/reservations/{id}/download-pdf', [ReservationDocsController::class, 'downloadPdf'])
+    ->name('reservations.pdf') 
+    ->middleware('signed');
+
+/*
+|--------------------------------------------------------------------------
+| 3. Rutas Protegidas (Requieren autenticación con Sanctum)
+|--------------------------------------------------------------------------
+|
+| Endpoints para clientes que ya han iniciado sesión.
+|
+*/
+
+Route::middleware('auth:sanctum')->group(function () {
+
+    // Autenticación
+    Route::post('/logout', [AuthController::class, 'logout']);
+
+    // CARRITO DE COMPRAS
+    Route::get('/cart', [CartController::class, 'index']);       // Ver carrito
+    Route::post('/cart', [CartController::class, 'store']);      // Agregar habitación
+    Route::delete('/cart/{id}', [CartController::class, 'destroy']); // Eliminar uno
+    Route::delete('/cart', [CartController::class, 'clear']);    // Vaciar todo
+
+    // Flujo de Reservas
+    Route::post('/reservations', [ReservationController::class, 'store']);
+    Route::get('/reservations', [ReservationController::class, 'index']);
+    Route::get('/reservations/{id}', [ReservationController::class, 'show']);
+    Route::post('/reservations/{id}/pay', [PaymentController::class, 'payReservation']);
+    Route::post('/reservations/{id}/checkout', [ReservationActionsController::class, 'checkout']);
+
+    // Acciones y Documentos de Reserva
+    // (Nota: Quitamos la ruta duplicada que tenías antes)
+    Route::post('/reservations/{id}/send-confirmation', [ReservationDocsController::class, 'sendConfirmation']);
+    Route::get('/reservations/{id}/voucher.pdf', [ReservationDocsController::class, 'voucher']); // JSON para React
+    Route::get('/reservations/{id}/calendar.ics', [ReservationDocsController::class, 'calendar']);
+    
+    // Check-in (para personal del hotel)
+    Route::post('/checkin/scan', [ReservationActionsController::class, 'scanQr']); // Si no existe este controller, usa CheckinController
+    
+    // Testimonios
+    Route::post('/testimonials', [TestimonialsController::class, 'store']);
+
+    // Zona de Cliente
+    Route::get('/zona-cliente', function (Request $request) {
+        if ($request->user()->role !== 'cliente') {
+            return ApiResponse::error('Acceso prohibido', [], 403);
+        }
+        return ApiResponse::success('Zona solo para clientes', [
+            'id'   => $request->user()->id,
+            'name' => $request->user()->name,
+        ], 200);
+    });
 });
